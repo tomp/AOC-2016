@@ -1,0 +1,23 @@
+Mapping to reverse "rotate by position of letter x"
+
+8 character string
+initial pos --> n --> final pos
+
+0 -- 1 --> 1
+1 -- 2 --> 3
+2 -- 3 --> 5
+3 -- 4 --> 7
+4 -- 6 --> 2
+5 -- 7 --> 4
+6 -- 0 --> 6
+7 -- 1 --> 0
+
+5 character string
+initial pos --> n --> final pos
+
+0 -- 1 --> 1
+1 -- 2 --> 3
+2 -- 3 --> 0
+3 -- 4 --> 2
+4 -- 6 --> 0
+
