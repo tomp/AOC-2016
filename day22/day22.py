@@ -46,57 +46,68 @@ class State(object):
     def __init__(self, nodes):
         self.xsize = 0
         self.ysize = 0
-        self._size = {}
-        self._used = {}
+        self._size = []
+        self._used = []
         self.history = []
         self._load_nodelist(nodes)
-        self.goal = (self.xsize, 0)
+        self.goal = (self.xsize - 1, 0)
 
     def score(self):
         xg, yg = self.goal
         return len(self.history) + xg + yg
 
     def key(self):
-        return tuple([self.goal] + sorted(self._used.items()))
+        return (self.goal, tuple([tuple(row) for row in self._used]))
 
     def used(self, xy):
-        return self._used[xy]
+        x, y = xy
+        return self._used[y][x]
 
     def avail(self, xy):
-        return self._size[xy] - self._used[xy]
+        x, y = xy
+        return self._size[y][x] - self._used[y][x]
 
     def size(self, xy):
-        return self._size[xy]
+        x, y = xy
+        return self._size[y][x]
 
     def _load_nodelist(self, nodes):
+        xmax, ymax = 0, 0
         for node in nodes:
             x, y = int(node.x), int(node.y)
-            if x > self.xsize:
-                self.xsize = x
-            if y > self.ysize:
-                self.ysize = y
-            xy = (x, y)
-            self._size[xy] = int(node.size)
-            self._used[xy] = int(node.used)
+            if x > xmax:
+                xmax = x
+            if y > ymax:
+                ymax = y
+        self.ysize = ymax + 1
+        self.xsize = xmax + 1
+        for y in range(self.ysize):
+            self._size.append([0] * self.xsize)
+            self._used.append([0] * self.xsize)
+        for node in nodes:
+            x, y = int(node.x), int(node.y)
+            self._size[y][x] = int(node.size)
+            self._used[y][x] = int(node.used)
 
     def moves(self, teleport=False):
         """Return a list of moves available from the currnet state."""
-        recv = sorted([(size - self._used[xy], xy) for xy, size
-            in self._size.items()], reverse=True)
-        send = sorted([(used, xy) for xy, used
-            in self._used.items() if used > 0])
+        recv = [(self._size[y][x] - self._used[y][x], x, y)
+                for x in range(self.xsize) for y in range(self.ysize)]
+        recv.sort(reverse=True)
+        send = [(self._used[y][x], x, y)
+                for x in range(self.xsize) for y in range(self.ysize)
+                if self._used[y][x] > 0]
+        send.sort()
         # print("recv: {}...".format(str(recv[:5])))
         # print("send: {}...".format(str(send[:5])))
         moves = []
-        for avail, xy1 in recv:
-            x1, y1 = xy1
-            for used, xy0 in send:
-                x0, y0 = xy0
+        for avail, x1, y1 in recv:
+            for used, x0, y0 in send:
                 if avail < used:
                     break
                 if teleport or (x0 == x1 and abs(y0 - y1) == 1) or (
                                 y0 == y1 and abs(x0 - x1) == 1):
-                    self.apply(xy0, xy1)
+                    self.apply((x0, y0), (x1, y1))
                     moves.append((self.score(), self.key(), list(self.history)))
                     self.undo()
         return moves
@@ -109,11 +120,13 @@ class State(object):
         """Move all data on node xy0 (x0, y0) to node xy1 (x1, y1).
         An exception is raised if the move is not possible.
         """
-        assert(self._used[xy0] + self._used[xy1] <= self._size[xy1])
-        data_size = self._used[xy0]
+        x0, y0 = xy0
+        x1, y1 = xy1
+        data_size = self._used[y0][x0]
+        assert(self._used[y1][x1] + data_size <= self._size[y1][x1])
         self.history.append((xy0, xy1, data_size))
-        self._used[xy1] += data_size
-        self._used[xy0] = 0
+        self._used[y1][x1] += data_size
+        self._used[y0][x0] = 0
         if self.goal == xy0:
             self.goal = xy1
 
@@ -121,8 +134,10 @@ class State(object):
         """Undo the last data move."""
         if self.history:
             xy0, xy1, data_size = self.history.pop()
-            self._used[xy1] -= data_size
-            self._used[xy0] = data_size
+            x0, y0 = xy0
+            x1, y1 = xy1
+            self._used[y1][x1] -= data_size
+            self._used[y0][x0] = data_size
             if self.goal == xy1:
                 self.goal = xy0
 
