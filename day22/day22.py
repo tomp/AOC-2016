@@ -53,11 +53,30 @@ class State(object):
         self.goal = (self.xsize - 1, 0)
 
     def score(self):
+        """Return a score based on the length of the search path, so far,
+        and a heuristic estimating the minimum number of steps required
+        to reach the goal state.
+
+        TODO: This heuristic is not admissable, but happens to work for
+        this particular problem anyway. :-(  #FIXME
+        """
         xg, yg = self.goal
-        return len(self.history) + xg + yg
+        xe, ye = self.empty_node()
+        score = len(self.history) + 4*(xg + yg)
+        if xg == 1:
+            score -= 3
+        if ye > 1:
+            score += ye - 1
+        dx = abs(xe - xg + 1)
+        if xg and dx:
+            score += dx
+        return score
+
+    def save(self):
+        return (self.goal, tuple([tuple(row) for row in self._used]))
 
     def key(self):
-        return (self.goal, tuple([tuple(row) for row in self._used]))
+        return (self.goal, tuple([tuple([v > 0 for v in row]) for row in self._used]))
 
     def used(self, xy):
         x, y = xy
@@ -70,47 +89,6 @@ class State(object):
     def size(self, xy):
         x, y = xy
         return self._size[y][x]
-
-    def _load_nodelist(self, nodes):
-        xmax, ymax = 0, 0
-        for node in nodes:
-            x, y = int(node.x), int(node.y)
-            if x > xmax:
-                xmax = x
-            if y > ymax:
-                ymax = y
-        self.ysize = ymax + 1
-        self.xsize = xmax + 1
-        for y in range(self.ysize):
-            self._size.append([0] * self.xsize)
-            self._used.append([0] * self.xsize)
-        for node in nodes:
-            x, y = int(node.x), int(node.y)
-            self._size[y][x] = int(node.size)
-            self._used[y][x] = int(node.used)
-
-    def moves(self, teleport=False):
-        """Return a list of moves available from the currnet state."""
-        recv = [(self._size[y][x] - self._used[y][x], x, y)
-                for x in range(self.xsize) for y in range(self.ysize)]
-        recv.sort(reverse=True)
-        send = [(self._used[y][x], x, y)
-                for x in range(self.xsize) for y in range(self.ysize)
-                if self._used[y][x] > 0]
-        send.sort()
-        # print("recv: {}...".format(str(recv[:5])))
-        # print("send: {}...".format(str(send[:5])))
-        moves = []
-        for avail, x1, y1 in recv:
-            for used, x0, y0 in send:
-                if avail < used:
-                    break
-                if teleport or (x0 == x1 and abs(y0 - y1) == 1) or (
-                                y0 == y1 and abs(x0 - x1) == 1):
-                    self.apply((x0, y0), (x1, y1))
-                    moves.append((self.score(), self.key(), list(self.history)))
-                    self.undo()
-        return moves
 
     def done(self):
         """Has the goal been met?"""
@@ -141,17 +119,61 @@ class State(object):
             if self.goal == xy1:
                 self.goal = xy0
 
-    def reset(self):
-        """Rewind the history, to restore this object to its original state.
-        """
-        while self.history:
-            self.undo()
-
-    def forward(self, history):
+    def restore(self, key, history):
         """Rewind the history, and then apply the given moves."""
-        self.reset()
-        for xy0, xy1, _ in history:
-            self.apply(xy0, xy1)
+        self.goal, used = key
+        self._used = []
+        for row in used:
+            self._used.append(list(row))
+        self.history = list(history)
+
+    def _load_nodelist(self, nodes):
+        xmax, ymax = 0, 0
+        for node in nodes:
+            x, y = int(node.x), int(node.y)
+            if x > xmax:
+                xmax = x
+            if y > ymax:
+                ymax = y
+        self.ysize = ymax + 1
+        self.xsize = xmax + 1
+        for y in range(self.ysize):
+            self._size.append([0] * self.xsize)
+            self._used.append([0] * self.xsize)
+        for node in nodes:
+            x, y = int(node.x), int(node.y)
+            self._size[y][x] = int(node.size)
+            self._used[y][x] = int(node.used)
+
+    def empty_node(self):
+        nodes = [(x, y)
+                for x in range(self.xsize) for y in range(self.ysize)
+                if self._used[y][x] == 0]
+        assert(len(nodes) == 1)
+        return nodes[0]
+
+    def moves(self, teleport=False):
+        """Return a list of moves available from the currnet state."""
+        recv = [(self._size[y][x] - self._used[y][x], x, y)
+                for x in range(self.xsize) for y in range(self.ysize)]
+        recv.sort(reverse=True)
+        send = [(self._used[y][x], x, y)
+                for x in range(self.xsize) for y in range(self.ysize)
+                if self._used[y][x] > 0]
+        send.sort()
+        # print("recv: {}...".format(str(recv[:5])))
+        # print("send: {}...".format(str(send[:5])))
+        moves = []
+        for avail, x1, y1 in recv:
+            for used, x0, y0 in send:
+                if avail < used:
+                    break
+                if teleport or (x0 == x1 and abs(y0 - y1) == 1) or (
+                                y0 == y1 and abs(x0 - x1) == 1):
+                    self.apply((x0, y0), (x1, y1))
+                    moves.append((self.score(), self.key(), self.save(), list(self.history)))
+                    self.undo()
+        return moves
 
 
 def search(state):
@@ -163,17 +185,19 @@ def search(state):
 
     A history of the required moves is returned.
     """
+    init_key =  state.key()
     visited = set(state.key())
     queue = state.moves()
     heapify(queue)
     total_states = 1
     while queue:
-        score, key, path = heappop(queue)
+        score, key, saved, path = heappop(queue)
         if key in visited:
             continue
-        state.forward(path)
-        print("[{}] score: {} goal:{}  moves:{}  (queue size {})".format(
-            total_states, score, state.goal, len(path), len(queue)))
+        state.restore(saved, path)
+        empty = state.empty_node()
+        print("[{}] score:{} goal:{} empty:{} moves:{}  (queue size {})".format(
+            total_states, score, state.goal, empty, len(path), len(queue)))
         if state.done():
             history = list(state.history)
             break
@@ -181,8 +205,11 @@ def search(state):
         total_states += 1
         for move in state.moves():
             heappush(queue, move)
+        if total_states > 100000:
+            history = []
+            break
 
-    state.reset()
+    state.restore(init_key, [])
     return history
 
         
@@ -205,7 +232,7 @@ Filesystem            Size  Used  Avail  Use%
     state = State(nodes)
     moves = state.moves()
     print("{} legal moves available in the initial state".format(len(moves)))
-    for score, key, path in moves:
+    for score, key, saved, path in moves:
         xy0, xy1, data_size = path[-1]
         print("Move {} units from {} to {} ({} available)  score {}".format(
             state.used(xy0), str(xy0), str(xy1), state.avail(xy1), score))
@@ -233,7 +260,7 @@ def part1(lines):
 
     moves = list(state.moves())
     print("{} legal moves available in the initial state".format(len(moves)))
-    for score, key, path in moves:
+    for score, key, saved, path in moves:
         xy0, xy1, data_size = path[-1]
         print("Move {} units from {} to {} ({} available)".format(
             state.used(xy0), str(xy0), str(xy1), state.avail(xy1)))
@@ -258,4 +285,4 @@ if __name__ == '__main__':
     example()
     lines = load_input(INPUTFILE)
     part1(lines)
-    # part2(lines)
+    part2(lines)
