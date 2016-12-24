@@ -1,0 +1,61 @@
+[00] cpy a b     # input value ('input') copied to 'b'
+[01] dec b       # b = b - 1 = input - 1
+[02] cpy a d     # lines 3-10: a = a * b; c = 0; d = 0
+[03] cpy 0 a
+[04] cpy b c
+[05] inc a
+[06] dec c
+[07] jnz c -2
+[08] dec d
+[09] jnz d -5
+[10] dec b       # lines 11-16: b = b - 1; c = 2 * (b - 1); d = 0
+[11] cpy b c
+[12] cpy c d     # lines 13-16: c = 2 * c; d = 0
+[13] dec d          
+[14] inc c
+[15] jnz d -2
+[16] tgl c       # toggle # 16 + c --> # 16 + 2*(b-1)
+[17] cpy -16 c
+[18] jnz 1 c     # lines 3-19: a = fact(a); b = ...?; c = -16; d = 0
+[19] cpy 81 c
+[20] jnz 94 d
+[21] inc a
+[22] inc d
+[23] jnz d -2
+[24] inc c
+[25] jnz c -5
+
+The instruction '[16] tgl c' successively toggles the even-addressed
+instructions 18, 20, 22, and 24
+
+The resulting program is effectively...
+
+[00] cpy a b     # input value ('input') copied to 'b'
+[01] dec b       # b = b - 1 = input - 1
+[02] cpy a d     # lines 3-10: a = a * b; c = 0; d = 0
+[03] cpy 0 a
+[04] cpy b c
+[05] inc a
+[06] dec c
+[07] jnz c -2
+[08] dec d
+[09] jnz d -5
+[10] dec b       # lines 11-16: b = b - 1; c = 2 * (b - 1); d = 0
+[11] cpy b c
+[12] dec c
+[13] jnz c -11   # lines 2-13: a = fact(a); b = 1; c = 0; d = 0
+[14] cpy 81 c    # lines 14-20: a = a + 81 * 94; c = 0; d = 0
+[15] cpy 94 d
+[16] inc a
+[17] dec d
+[18] jnz d -2
+[19] dec c
+[20] jnz c -5
+
+The overall calculation performed is...
+
+    a = fact(a) + 81 * 94
+
+
+Tom Pollard
+Dec 24, 2016
